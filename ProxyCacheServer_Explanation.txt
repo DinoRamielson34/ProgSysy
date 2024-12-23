@@ -1,0 +1,82 @@
+
+Le code Java suivant implémente un serveur proxy-cache. Il écoute sur un port spécifié, sert de cache pour les fichiers demandés, et nettoie le cache périodiquement.
+
+### Déclarations de variables globales
+1. **PROXY_IP** et **PORT** : Ces variables contiennent respectivement l'adresse IP et le port sur lequel le serveur proxy écoute.
+2. **CACHE_EXPIRATION_TIME** : La durée d'expiration du cache en millisecondes, chargée depuis le fichier de configuration.
+3. **running** : Un indicateur pour contrôler l'exécution du serveur. Le serveur reste en marche tant que cette variable est vraie.
+4. **cacheMemory** : Une carte concurrente qui sert de cache pour les fichiers. Les clés sont les noms de fichiers, et les valeurs sont des objets `CacheEntry` qui contiennent le contenu du fichier et son horodatage.
+5. **cacheCleaner** : Un `ScheduledExecutorService` qui nettoie régulièrement le cache en supprimant les entrées expirées.
+
+### Méthodes principales
+#### `main(String[] args)`
+Cette méthode charge la configuration et démarre le serveur.
+- **loadConfiguration()** charge les propriétés à partir du fichier `config.properties`.
+- **ServerSocket** est utilisé pour accepter les connexions des clients. Lorsqu'un client se connecte, un nouveau thread est créé pour gérer la demande avec la classe `ProxyHandler`.
+- **startCacheCleaner()** démarre le nettoyage périodique du cache.
+- **handleServerCommands()** écoute les commandes du serveur, telles que `listecache` et `exit`.
+
+#### `loadConfiguration()`
+Cette méthode charge la configuration à partir du fichier `config.properties` :
+- Elle ouvre le fichier `config.properties` avec un `FileInputStream`.
+- Elle charge les propriétés via `properties.load(input)` et récupère les valeurs pour l'IP du proxy, le port et la durée d'expiration du cache.
+- En cas d'erreur, elle affiche un message d'erreur et termine le programme.
+
+#### `handleServerCommands()`
+Cette méthode permet d'écouter les commandes d'administration du serveur via la ligne de commande :
+- La commande `listecache` affiche les fichiers actuellement stockés dans le cache.
+- La commande `exit` arrête le serveur et ferme l'application.
+- La commande `remove` efface manuellement un element dans le cache.
+
+#### `listCacheContents()`
+Affiche les clés des entrées de cache actuelles. Si le cache est vide, un message l'indique.
+
+#### `startCacheCleaner()`
+Lance un nettoyage périodique du cache :
+- Le cache est nettoyé toutes les `CACHE_EXPIRATION_TIME` millisecondes, en supprimant les entrées expirées.
+
+#### `stopCacheCleaner()`
+Arrête le nettoyeur périodique du cache lorsqu'il n'est plus nécessaire.
+
+### Classe interne `CacheEntry`
+Cette classe représente une entrée du cache :
+- **content** : Le contenu du fichier mis en cache.
+- **timestamp** : L'horodatage lorsque le fichier a été mis en cache.
+- **isExpired()** : Vérifie si le fichier est expiré en fonction de la durée d'expiration spécifiée.
+
+### Classe interne `ProxyHandler`
+Cette classe gère chaque requête client envoyée au serveur proxy :
+- Lorsqu'un client envoie une requête, elle est lue via un `BufferedReader`.
+- Si la requête est un `GET` (requête HTTP pour récupérer un fichier), elle vérifie si le fichier demandé est déjà en cache.
+    - Si le fichier est dans le cache et n'est pas expiré, le serveur envoie la réponse avec le contenu du cache.
+    - Si le fichier n'est pas en cache ou est expiré, il est récupéré à partir du serveur d'origine via une connexion à "localhost" (c'est-à-dire un autre serveur HTTP local).
+    - Le fichier est ensuite mis en cache et renvoyé au client.
+- La méthode **sendResponse()** envoie la réponse HTTP au client, avec un code de statut, un message de statut, et le contenu du fichier.
+- La méthode **getContentType()** déduit le type de contenu en fonction de l'extension du fichier.
+
+### Méthodes de gestion des fichiers
+#### `fetchFileFromOrigin(String fileName)`
+Cette méthode se connecte à un serveur d'origine (sur localhost:80), envoie une requête GET, et récupère le fichier demandé.
+- Le contenu du fichier est récupéré par un flux de lecture et renvoyé sous forme de tableau de bytes.
+
+#### `sendResponse(OutputStream clientOut, int statusCode, String statusMessage, String fileName, byte[] content)`
+Envoie la réponse HTTP au client. Le corps de la réponse inclut les entêtes HTTP (comme `Content-Type` et `Cache-Control`), suivis du contenu du fichier.
+
+#### `getContentType(String fileName)`
+Retourne le type MIME du fichier basé sur son extension (ex : `.html`, `.css`, `.js`).
+
+La fonction removeCacheEntry(String fileName) sert à supprimer manuellement un fichier spécifique du cache.
+
+Vérification de l'existence :
+
+Si le fichier nommé fileName existe dans le cache (cacheMemory.containsKey(fileName)), il est supprimé avec cacheMemory.remove(fileName).
+Un message de confirmation est affiché : "Fichier '<fileName>' supprimé du cache."
+Gestion des erreurs :
+
+Si le fichier n'existe pas dans le cache, un message est affiché : "Le fichier '<fileName>' n'est pas dans le cache."
+Exemple d'utilisation avec la commande remove :
+Si l'utilisateur tape remove a.html dans le terminal :
+Si a.html est dans le cache, il est supprimé.
+Sinon, l'utilisateur est informé que le fichier n'existe pas dans le cache.
+### Conclusion
+Ce code Java met en œuvre un serveur proxy-cache simple mais fonctionnel qui peut être étendu pour gérer des cas plus complexes. Il gère la mise en cache des fichiers, leur expiration, et permet une gestion des commandes via la ligne de commande. 
